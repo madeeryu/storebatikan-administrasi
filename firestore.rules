@@ -1,0 +1,16 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Hanya user yang sudah login (akun dari Firebase Auth) yang boleh akses.
+    // Data keuangan pribadi → jangan dibuka publik.
+    function isLoggedIn() { return request.auth != null; }
+
+    match /pengaturan/{doc} { allow read, write: if isLoggedIn(); }
+    match /kantong/{doc}    { allow read, write: if isLoggedIn(); }
+    match /kas/{doc}        { allow read, write: if isLoggedIn(); }
+
+    // (disiapkan untuk tahap berikutnya)
+    match /kategori/{doc}        { allow read, write: if isLoggedIn(); }
+    match /snapshot_neraca/{doc} { allow read, write: if isLoggedIn(); }
+  }
+}
