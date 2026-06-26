@@ -157,6 +157,24 @@
       <div class="card card-b" id="riwayat-list"><div class="loading"><div class="spin"></div></div></div>
     </div>
 
+    <!-- LAPORAN / ARUS KAS -->
+    <div class="page" id="page-laporan">
+      <div class="page-title">Laporan Arus Kas</div>
+      <div class="page-sub">Masuk vs keluar, per kantong, plus pelacak Prive &amp; Modal</div>
+      <div class="card card-b mb12">
+        <div class="seg mb12" id="lap-seg">
+          <button data-mode="bulan" class="active" onclick="setLapMode('bulan')">🗓️ Bulanan</button>
+          <button data-mode="tahun" onclick="setLapMode('tahun')">📅 Tahunan</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <button class="btn btn-sec btn-sm" onclick="lapNav(-1)">←</button>
+          <div style="flex:1;text-align:center;font-weight:700;font-size:14px" id="lap-label">-</div>
+          <button class="btn btn-sec btn-sm" onclick="lapNav(1)">→</button>
+        </div>
+      </div>
+      <div id="laporan-body"><div class="loading"><div class="spin"></div></div></div>
+    </div>
+
     <!-- SALDO & REKONSILIASI -->
     <div class="page" id="page-saldo">
       <div class="page-title">Saldo &amp; Rekonsiliasi</div>
@@ -179,6 +197,7 @@
   <div class="bnav">
     <button class="active" data-nav="beranda" onclick="navTo('beranda')"><span class="ic">🏠</span>Beranda</button>
     <button data-nav="riwayat" onclick="navTo('riwayat')"><span class="ic">📋</span>Riwayat</button>
+    <button data-nav="laporan" onclick="navTo('laporan')"><span class="ic">📊</span>Laporan</button>
     <button data-nav="saldo" onclick="navTo('saldo')"><span class="ic">⚖️</span>Saldo</button>
     <button data-nav="atur" onclick="navTo('atur')"><span class="ic">⚙️</span>Atur</button>
   </div>
@@ -250,6 +269,24 @@
   </div>
 </div>
 
+<!-- ===== MODAL: KATEGORI ===== -->
+<div class="modal-bd" id="m-kategori">
+  <div class="modal">
+    <div class="modal-h"><div class="t" id="mc-title">Kategori</div><button class="modal-x" onclick="closeModal('m-kategori')">✕</button></div>
+    <div class="modal-c">
+      <input type="hidden" id="mc-id"/>
+      <div class="fg"><label>Untuk Jenis</label>
+        <select class="inp" id="mc-jenis"><option value="masuk">⬇️ Masuk</option><option value="keluar">⬆️ Keluar</option><option value="transfer">🔁 Transfer</option></select>
+      </div>
+      <div class="fg"><label>Nama Kategori</label><input class="inp" id="mc-nama" placeholder="cth: Beli Stok / Gaji / Belanja Pribadi"/></div>
+    </div>
+    <div class="modal-f">
+      <button class="btn btn-danger btn-sm hidden" id="mc-hapus" onclick="hapusKategori()">🗑️ Hapus</button>
+      <button class="btn btn-primary btn-block" onclick="simpanKategori()">💾 Simpan</button>
+    </div>
+  </div>
+</div>
+
 <!-- ===== MODAL: REKONSILIASI ===== -->
 <div class="modal-bd" id="m-rekon">
   <div class="modal">
@@ -277,12 +314,12 @@
      (Firebase Console → Project Settings → Your apps → Web app)
   ============================================================ */
   const firebaseConfig = {
-    apiKey: "GANTI_API_KEY",
-    authDomain: "GANTI.firebaseapp.com",
-    projectId: "GANTI_PROJECT_ID",
-    storageBucket: "GANTI.appspot.com",
-    messagingSenderId: "GANTI",
-    appId: "GANTI_APP_ID"
+    apiKey: "AIzaSyC2CTJaYmouVRub3tmOtRdVQiBFBinE9DQ",
+    authDomain: "storebatikan-administrasi.firebaseapp.com",
+    projectId: "storebatikan-administrasi",
+    storageBucket: "storebatikan-administrasi.firebasestorage.app",
+    messagingSenderId: "1019613661920",
+    appId: "1:1019613661920:web:2e9e6ee2659a142527de85"
   };
 
   const app = initializeApp(firebaseConfig);
@@ -294,8 +331,12 @@
   let kantongList = [];        // {id, nama, icon, tipe, saldo_awal, urutan}
   let kasList = [];            // semua transaksi kas
   let config = null;           // pengaturan/config
+  let kategoriList = [];       // {id, nama, jenis}
   let _jenis = 'masuk';
   let riwayatFilterKantong = '';
+  let lapMode = 'bulan';       // 'bulan' | 'tahun'
+  let lapRef = new Date();     // periode acuan laporan
+  let _chartArus = null;
 
   // ---------- HELPERS ----------
   const rp = n => 'Rp ' + Math.round(n||0).toLocaleString('id-ID');
@@ -358,6 +399,7 @@
       kasList = kasSnap.docs.map(d=>({id:d.id,...d.data()}));
 
       if(!config || !kantongList.length){ showSetup(); return; }
+      await loadKategori();
       fillKantongSelects();
       renderBeranda(); renderRiwayat(); renderSaldo(); renderAtur();
     }catch(e){
@@ -365,6 +407,27 @@
       el('beranda-body').innerHTML = `<div class="info-box ib-amber">⚠️ ${e.message}<br><br>Pastikan config Firebase sudah diisi & Firestore aktif. Lihat PANDUAN_SETUP.</div>`;
     }
   }
+
+  async function loadKategori(){
+    const snap = await getDocs(collection(db,'kategori'));
+    kategoriList = snap.docs.map(d=>({id:d.id,...d.data()}));
+    // Seed default sekali kalau masih kosong
+    if(!kategoriList.length){
+      const batch = writeBatch(db);
+      let urut=0;
+      ['masuk','keluar','transfer'].forEach(j=>{
+        (KATEGORI[j]||[]).forEach(nama=>{
+          const ref=doc(collection(db,'kategori'));
+          batch.set(ref,{nama,jenis:j,urutan:urut++,created_at:serverTimestamp()});
+        });
+      });
+      await batch.commit();
+      const s2 = await getDocs(collection(db,'kategori'));
+      kategoriList = s2.docs.map(d=>({id:d.id,...d.data()}));
+    }
+    kategoriList.sort((a,b)=>(a.urutan||0)-(b.urutan||0));
+  }
+  function katByJenis(j){ return kategoriList.filter(k=>k.jenis===j).map(k=>k.nama); }
 
   // ============================================================
   //  HITUNG SALDO
@@ -394,6 +457,7 @@
     window.scrollTo(0,0);
     if(p==='beranda') renderBeranda();
     if(p==='riwayat') renderRiwayat();
+    if(p==='laporan') renderLaporan();
     if(p==='saldo') renderSaldo();
     if(p==='atur') renderAtur();
   };
@@ -552,8 +616,8 @@
     document.querySelectorAll('#mi-seg button').forEach(b=>b.classList.toggle('active',b.dataset.j===j));
     el('mi-kantong-lbl').textContent = j==='transfer'?'Dari Kantong':'Kantong';
     el('mi-kantong-ke-wrap').classList.toggle('hidden', j!=='transfer');
-    // kategori options
-    const kat=KATEGORI[j]||[];
+    // kategori options (dari kategori terkelola)
+    const kat = katByJenis(j).length ? katByJenis(j) : (KATEGORI[j]||[]);
     el('mi-kategori').innerHTML = kat.map(c=>`<option value="${c}">${c}</option>`).join('');
     if(j==='transfer'){ el('mi-transfer-hint').textContent='Transfer tidak mengubah total saldo — hanya memindah uang antar kantong (mis. Prive: usaha→pribadi, Modal: pribadi→usaha).'; }
   };
@@ -660,6 +724,128 @@
   };
 
   // ============================================================
+  //  LAPORAN / ARUS KAS
+  // ============================================================
+  window.setLapMode = function(m){ lapMode=m; lapRef=new Date();
+    document.querySelectorAll('#lap-seg button').forEach(b=>b.classList.toggle('active',b.dataset.mode===m));
+    renderLaporan();
+  };
+  window.lapNav = function(delta){
+    if(lapMode==='bulan') lapRef = new Date(lapRef.getFullYear(), lapRef.getMonth()+delta, 1);
+    else lapRef = new Date(lapRef.getFullYear()+delta, 0, 1);
+    renderLaporan();
+  };
+  function lapRange(){
+    if(lapMode==='bulan'){
+      const dari=new Date(lapRef.getFullYear(),lapRef.getMonth(),1);
+      const sampai=new Date(lapRef.getFullYear(),lapRef.getMonth()+1,0,23,59,59,999);
+      const bln=['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+      return {dari,sampai,label:`${bln[dari.getMonth()]} ${dari.getFullYear()}`};
+    }
+    const dari=new Date(lapRef.getFullYear(),0,1);
+    const sampai=new Date(lapRef.getFullYear(),11,31,23,59,59,999);
+    return {dari,sampai,label:`Tahun ${dari.getFullYear()}`};
+  }
+  function renderLaporan(){
+    const {dari,sampai,label}=lapRange();
+    el('lap-label').textContent=label;
+    const inRange=t=>{const d=tglFromKas(t);return d>=dari&&d<=sampai;};
+    const trx=kasList.filter(inRange);
+
+    let masuk=0,keluar=0;
+    const perK={}; kantongList.forEach(k=>perK[k.id]={masuk:0,keluar:0});
+    let priveTot=0, modalTot=0; const privePer={}, modalPer={};
+    trx.forEach(t=>{
+      if(t.jenis==='masuk'){ masuk+=t.nominal||0; if(perK[t.kantong_id])perK[t.kantong_id].masuk+=t.nominal||0; }
+      else if(t.jenis==='keluar'){ keluar+=t.nominal||0; if(perK[t.kantong_id])perK[t.kantong_id].keluar+=t.nominal||0; }
+      else if(t.jenis==='transfer'){
+        const src=kantongList.find(k=>k.id===t.kantong_id);
+        const dst=kantongList.find(k=>k.id===t.kantong_ke_id);
+        if(src&&dst){
+          if(src.tipe==='usaha'&&dst.tipe==='pribadi'){ priveTot+=t.nominal||0; privePer[src.id]=(privePer[src.id]||0)+(t.nominal||0); }
+          else if(src.tipe==='pribadi'&&dst.tipe==='usaha'){ modalTot+=t.nominal||0; modalPer[dst.id]=(modalPer[dst.id]||0)+(t.nominal||0); }
+        }
+      }
+    });
+    const bersih=masuk-keluar;
+
+    // Tracker Prive & Modal per kantong usaha
+    const usahaK=kantongList.filter(k=>k.tipe==='usaha');
+    const priveRows = usahaK.map(k=>{
+      const p=privePer[k.id]||0, m=modalPer[k.id]||0, net=m-p;
+      return `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
+        <span style="font-weight:600">${k.icon||'💼'} ${k.nama}</span>
+        <span style="font-size:12px;text-align:right">
+          <span style="color:var(--red)">Prive −${rp(p)}</span> · <span style="color:var(--green-text)">Modal +${rp(m)}</span><br>
+          <strong style="color:${net>=0?'var(--green-text)':'var(--red)'}">Net ${net>=0?'+':'−'}${rp(Math.abs(net))}</strong>
+        </span></div>`;
+    }).join('');
+
+    const kRows = kantongList.map(k=>{
+      const x=perK[k.id]||{masuk:0,keluar:0};
+      return `<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border);font-size:13px">
+        <span style="font-weight:600">${k.icon||'💼'} ${k.nama}</span>
+        <span><span style="color:var(--green-text)">+${rp(x.masuk)}</span> / <span style="color:var(--red)">−${rp(x.keluar)}</span></span>
+      </div>`;
+    }).join('');
+
+    el('laporan-body').innerHTML=`
+      <div class="row mb12">
+        <div class="kcard"><div class="nm">⬇️ Masuk</div><div class="amt" style="color:var(--green-text)">${rp(masuk)}</div></div>
+        <div class="kcard"><div class="nm">⬆️ Keluar</div><div class="amt" style="color:var(--red)">${rp(keluar)}</div></div>
+      </div>
+      <div class="kcard mb16" style="text-align:center">
+        <div class="nm" style="justify-content:center">💵 Arus Kas Bersih</div>
+        <div class="amt" style="color:${bersih>=0?'var(--green-text)':'var(--red)'};font-size:24px">${bersih>=0?'+':'−'}${rp(Math.abs(bersih))}</div>
+        <div class="sub">${trx.length} transaksi periode ini</div>
+      </div>
+      <div class="card card-b mb16"><div style="position:relative;height:230px"><canvas id="chart-arus"></canvas></div></div>
+      <div class="sec-title">🔁 Prive &amp; Setor Modal</div>
+      <div class="card card-b mb16">
+        ${usahaK.length? `<div class="info-box ib-blue" style="margin-bottom:8px">Prive = uang usaha kepakai pribadi. Modal = uang pribadi disetor ke usaha.</div>${priveRows}
+        <div style="display:flex;justify-content:space-between;margin-top:10px;font-weight:800">
+          <span>Total</span><span><span style="color:var(--red)">Prive −${rp(priveTot)}</span> · <span style="color:var(--green-text)">Modal +${rp(modalTot)}</span></span></div>`
+        : '<div class="empty">Belum ada kantong usaha</div>'}
+      </div>
+      <div class="sec-title">Rincian per Kantong</div>
+      <div class="card card-b">${kRows}</div>`;
+
+    renderChartArus(dari,sampai);
+  }
+
+  function renderChartArus(dari,sampai){
+    if(_chartArus){ _chartArus.destroy(); _chartArus=null; }
+    const ctx=el('chart-arus')?.getContext('2d'); if(!ctx) return;
+    if(lapMode==='bulan'){
+      // bar per kantong: masuk vs keluar
+      const labels=[], dMasuk=[], dKeluar=[];
+      kantongList.forEach(k=>{
+        let mk=0,kl=0;
+        kasList.forEach(t=>{const d=tglFromKas(t); if(d<dari||d>sampai)return;
+          if(t.jenis==='masuk'&&t.kantong_id===k.id)mk+=t.nominal||0;
+          if(t.jenis==='keluar'&&t.kantong_id===k.id)kl+=t.nominal||0;});
+        labels.push(k.nama); dMasuk.push(mk); dKeluar.push(kl);
+      });
+      _chartArus=new Chart(ctx,{type:'bar',data:{labels,datasets:[
+        {label:'Masuk',data:dMasuk,backgroundColor:'rgba(22,163,74,.8)',borderRadius:5},
+        {label:'Keluar',data:dKeluar,backgroundColor:'rgba(220,38,38,.75)',borderRadius:5}]},
+        options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom'},tooltip:{callbacks:{label:c=>` ${c.dataset.label}: ${rp(c.parsed.y)}`}}},
+        scales:{y:{ticks:{callback:v=>'Rp '+(v/1000).toFixed(0)+'k'},grid:{color:'#eef0ef'}}}}});
+    }else{
+      // line per bulan: masuk vs keluar
+      const bln=['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+      const mk=new Array(12).fill(0), kl=new Array(12).fill(0);
+      kasList.forEach(t=>{const d=tglFromKas(t); if(d<dari||d>sampai)return; const m=d.getMonth();
+        if(t.jenis==='masuk')mk[m]+=t.nominal||0; if(t.jenis==='keluar')kl[m]+=t.nominal||0;});
+      _chartArus=new Chart(ctx,{type:'line',data:{labels:bln,datasets:[
+        {label:'Masuk',data:mk,borderColor:'#16A34A',backgroundColor:'rgba(22,163,74,.08)',tension:.3,fill:true},
+        {label:'Keluar',data:kl,borderColor:'#DC2626',backgroundColor:'rgba(220,38,38,.06)',tension:.3}]},
+        options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom'},tooltip:{callbacks:{label:c=>` ${c.dataset.label}: ${rp(c.parsed.y)}`}}},
+        scales:{y:{ticks:{callback:v=>'Rp '+(v/1000000).toFixed(1)+'jt'},grid:{color:'#eef0ef'}}}}});
+    }
+  }
+
+  // ============================================================
   //  PENGATURAN / KANTONG CRUD
   // ============================================================
   function renderAtur(){
@@ -677,6 +863,20 @@
           <button class="btn btn-primary btn-sm" onclick="tambahKantong()">+ Tambah</button>
         </div>
         ${rows||'<div class="empty">Belum ada kantong</div>'}
+      </div>
+      <div class="card card-b mb16">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <strong>Kategori</strong>
+          <button class="btn btn-primary btn-sm" onclick="tambahKategori()">+ Tambah</button>
+        </div>
+        ${['masuk','keluar','transfer'].map(j=>{
+          const ic = j==='masuk'?'⬇️':j==='keluar'?'⬆️':'🔁';
+          const items = kategoriList.filter(k=>k.jenis===j);
+          return `<div style="margin-top:8px"><div style="font-size:11px;font-weight:700;color:var(--t3);text-transform:uppercase">${ic} ${j}</div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:5px">
+            ${items.map(k=>`<span class="chip" style="background:var(--bg);cursor:pointer" onclick="editKategori('${k.id}')">${k.nama} ✏️</span>`).join('')||'<span style="font-size:12px;color:var(--t3)">—</span>'}
+            </div></div>`;
+        }).join('')}
       </div>
       <div class="card card-b mb16">
         <strong>Info Rekening</strong>
@@ -716,6 +916,39 @@
     if(adaTrx){ toast('Tidak bisa hapus: kantong masih punya transaksi','err'); return; }
     if(!confirm('Hapus kantong ini?')) return;
     try{ await deleteDoc(doc(db,'kantong',id)); closeModal('m-kantong'); toast('Dihapus ✓','ok'); await loadAll(); }
+    catch(e){ toast('Gagal: '+e.message,'err'); }
+  };
+
+  // ---- KATEGORI CRUD ----
+  window.tambahKategori = function(){
+    el('mc-id').value=''; el('mc-title').textContent='Tambah Kategori';
+    el('mc-nama').value=''; el('mc-jenis').value='keluar';
+    el('mc-hapus').classList.add('hidden');
+    openModal('m-kategori');
+  };
+  window.editKategori = function(id){
+    const k=kategoriList.find(x=>x.id===id); if(!k) return;
+    el('mc-id').value=id; el('mc-title').textContent='Edit Kategori';
+    el('mc-nama').value=k.nama; el('mc-jenis').value=k.jenis;
+    el('mc-hapus').classList.remove('hidden');
+    openModal('m-kategori');
+  };
+  window.simpanKategori = async function(){
+    const id=el('mc-id').value;
+    const nama=el('mc-nama').value.trim();
+    const jenis=el('mc-jenis').value;
+    if(!nama){ toast('Nama kategori wajib diisi','err'); return; }
+    try{
+      if(id){ await updateDoc(doc(db,'kategori',id),{nama,jenis,updated_at:serverTimestamp()}); }
+      else { await addDoc(collection(db,'kategori'),{nama,jenis,urutan:kategoriList.length,created_at:serverTimestamp()}); }
+      closeModal('m-kategori'); toast('Kategori disimpan ✓','ok');
+      await loadKategori(); renderAtur();
+    }catch(e){ toast('Gagal: '+e.message,'err'); }
+  };
+  window.hapusKategori = async function(){
+    const id=el('mc-id').value; if(!id) return;
+    if(!confirm('Hapus kategori ini? (transaksi lama tidak terhapus)')) return;
+    try{ await deleteDoc(doc(db,'kategori',id)); closeModal('m-kategori'); toast('Dihapus ✓','ok'); await loadKategori(); renderAtur(); }
     catch(e){ toast('Gagal: '+e.message,'err'); }
   };
 </script>
