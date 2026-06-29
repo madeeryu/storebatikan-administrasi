@@ -167,10 +167,11 @@
         <button data-view="neraca" onclick="setLapView('neraca')">📊 Neraca</button>
       </div>
       <div class="card card-b mb12" id="lap-period-card">
-        <div class="seg mb12" id="lap-seg">
+        <div class="seg mb12" id="lap-seg" style="flex-wrap:wrap">
+          <button data-mode="harian" onclick="setLapMode('harian')">📅 Harian</button>
           <button data-mode="minggu" onclick="setLapMode('minggu')">📆 Mingguan</button>
           <button data-mode="bulan" class="active" onclick="setLapMode('bulan')">🗓️ Bulanan</button>
-          <button data-mode="tahun" onclick="setLapMode('tahun')">📅 Tahunan</button>
+          <button data-mode="tahun" onclick="setLapMode('tahun')">📊 Tahunan</button>
           <button data-mode="pilih" onclick="setLapMode('pilih')">🎯 Pilih</button>
         </div>
         <div style="display:flex;align-items:center;gap:8px" id="lap-nav">
@@ -884,13 +885,19 @@
   window.lapPilihChange = function(){ lapDari=el('lap-dari').value; lapSampai=el('lap-sampai').value; renderLaporan(); };
   function startOfWeek(d){ const x=new Date(d); const day=x.getDay(); x.setDate(x.getDate()-((day+6)%7)); x.setHours(0,0,0,0); return x; } // Senin
   window.lapNav = function(delta){
-    if(lapMode==='minggu') lapRef = new Date(lapRef.getFullYear(),lapRef.getMonth(),lapRef.getDate()+delta*7);
+    if(lapMode==='harian') lapRef = new Date(lapRef.getFullYear(),lapRef.getMonth(),lapRef.getDate()+delta);
+    else if(lapMode==='minggu') lapRef = new Date(lapRef.getFullYear(),lapRef.getMonth(),lapRef.getDate()+delta*7);
     else if(lapMode==='bulan') lapRef = new Date(lapRef.getFullYear(), lapRef.getMonth()+delta, 1);
     else if(lapMode==='tahun') lapRef = new Date(lapRef.getFullYear()+delta, 0, 1);
     renderLaporan();
   };
   function lapRange(){
     const fmt=d=>d.toLocaleDateString('id-ID',{day:'numeric',month:'short',year:'numeric'});
+    if(lapMode==='harian'){
+      const dari=new Date(lapRef.getFullYear(),lapRef.getMonth(),lapRef.getDate(),0,0,0);
+      const sampai=new Date(lapRef.getFullYear(),lapRef.getMonth(),lapRef.getDate(),23,59,59,999);
+      return {dari,sampai,label:lapRef.toLocaleDateString('id-ID',{weekday:'long',day:'numeric',month:'long',year:'numeric'})};
+    }
     if(lapMode==='minggu'){
       const dari=startOfWeek(lapRef);
       const sampai=new Date(dari); sampai.setDate(dari.getDate()+6); sampai.setHours(23,59,59,999);
