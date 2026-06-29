@@ -159,17 +159,28 @@
 
     <!-- LAPORAN / ARUS KAS -->
     <div class="page" id="page-laporan">
-      <div class="page-title">Laporan Arus Kas</div>
-      <div class="page-sub">Masuk vs keluar, per kantong, plus pelacak Prive &amp; Modal</div>
-      <div class="card card-b mb12">
+      <div class="page-title">Laporan Keuangan</div>
+      <div class="page-sub">Arus kas, laba-rugi per usaha, dan neraca</div>
+      <div class="seg mb12" id="lap-view-seg">
+        <button data-view="arus" class="active" onclick="setLapView('arus')">💵 Arus Kas</button>
+        <button data-view="labarugi" onclick="setLapView('labarugi')">📈 Laba-Rugi</button>
+        <button data-view="neraca" onclick="setLapView('neraca')">📊 Neraca</button>
+      </div>
+      <div class="card card-b mb12" id="lap-period-card">
         <div class="seg mb12" id="lap-seg">
+          <button data-mode="minggu" onclick="setLapMode('minggu')">📆 Mingguan</button>
           <button data-mode="bulan" class="active" onclick="setLapMode('bulan')">🗓️ Bulanan</button>
           <button data-mode="tahun" onclick="setLapMode('tahun')">📅 Tahunan</button>
+          <button data-mode="pilih" onclick="setLapMode('pilih')">🎯 Pilih</button>
         </div>
-        <div style="display:flex;align-items:center;gap:8px">
+        <div style="display:flex;align-items:center;gap:8px" id="lap-nav">
           <button class="btn btn-sec btn-sm" onclick="lapNav(-1)">←</button>
           <div style="flex:1;text-align:center;font-weight:700;font-size:14px" id="lap-label">-</div>
           <button class="btn btn-sec btn-sm" onclick="lapNav(1)">→</button>
+        </div>
+        <div class="row hidden" id="lap-pilih" style="gap:8px">
+          <div style="flex:1"><label style="font-size:11px">Dari</label><input class="inp" type="date" id="lap-dari" onchange="lapPilihChange()"/></div>
+          <div style="flex:1"><label style="font-size:11px">Sampai</label><input class="inp" type="date" id="lap-sampai" onchange="lapPilihChange()"/></div>
         </div>
       </div>
       <div id="laporan-body"><div class="loading"><div class="spin"></div></div></div>
@@ -211,9 +222,12 @@
       <div class="info-box ib-blue mb16">Karena semua usaha &amp; pribadi memakai <strong>1 rekening</strong>, kita pisahkan jadi beberapa <strong>kantong</strong>. Isi saldo awal tiap kantong (perkiraan boleh) — totalnya = saldo rekeningmu sekarang.</div>
       <div class="fg"><label>Tanggal Mulai Pencatatan</label><input class="inp" type="date" id="su-tgl"/></div>
       <div class="fg"><label>Nama Rekening (opsional)</label><input class="inp" id="su-bank" placeholder="cth: BCA 1234"/></div>
-      <div class="sec-title">Saldo Awal per Kantong</div>
+      <div class="sec-title">Saldo Awal per Kantong (pemilik uang)</div>
       <div id="su-kantong"></div>
       <div style="font-size:13px;font-weight:700;text-align:right;margin-top:8px">Total: <span id="su-total" style="color:var(--green)">Rp 0</span></div>
+      <div class="sec-title">Berapa yang berbentuk Tunai (cash di tangan)?</div>
+      <div class="fg"><input class="inp" type="number" min="0" id="su-tunai" placeholder="saldo tunai saat ini" value="0"/></div>
+      <div class="info-box ib-amber">Sisanya otomatis dianggap ada di <strong>Rekening Bank</strong>. (Tunai + Rekening = Total di atas)</div>
     </div>
     <div class="modal-f"><button class="btn btn-primary btn-block" id="su-btn" onclick="simpanSetup()">Simpan &amp; Mulai</button></div>
   </div>
@@ -231,8 +245,17 @@
         <button data-j="transfer" onclick="setJenis('transfer')">🔁 Transfer</button>
       </div>
       <div class="fg"><label>Nominal (Rp)</label><input class="inp num-big" id="mi-nominal" type="number" inputmode="numeric" min="0" placeholder="0" oninput="previewNominal()"/><div id="mi-nominal-prev" style="text-align:center;font-size:12px;color:var(--t3)"></div></div>
+      <!-- sub-mode untuk Transfer -->
+      <div class="seg mb16 hidden" id="mi-tmode">
+        <button data-tm="kantong" class="active" onclick="setTransferMode('kantong')">🔁 Antar Kantong</button>
+        <button data-tm="akun" onclick="setTransferMode('akun')">💵 Tunai ↔ Bank</button>
+      </div>
+      <!-- Akun (lokasi uang) untuk masuk/keluar & setor -->
+      <div class="fg" id="mi-akun-wrap"><label id="mi-akun-lbl">Lokasi Uang</label><select class="inp" id="mi-akun"></select></div>
+      <div class="fg hidden" id="mi-akun-ke-wrap"><label>Ke Akun</label><select class="inp" id="mi-akun-ke"></select></div>
       <div class="fg" id="mi-kantong-wrap"><label id="mi-kantong-lbl">Kantong</label><select class="inp" id="mi-kantong"></select></div>
-      <div class="fg hidden" id="mi-kantong-ke-wrap"><label>Ke Kantong</label><select class="inp" id="mi-kantong-ke"></select><div class="info-box ib-amber" style="margin-top:8px" id="mi-transfer-hint"></div></div>
+      <div class="fg hidden" id="mi-kantong-ke-wrap"><label>Ke Kantong</label><select class="inp" id="mi-kantong-ke"></select></div>
+      <div class="info-box ib-amber hidden" id="mi-transfer-hint" style="margin-bottom:14px"></div>
       <div class="fg" id="mi-kategori-wrap">
         <label>Kategori</label>
         <select class="inp" id="mi-kategori"></select>
@@ -290,14 +313,31 @@
 <!-- ===== MODAL: REKONSILIASI ===== -->
 <div class="modal-bd" id="m-rekon">
   <div class="modal">
-    <div class="modal-h"><div class="t">⚖️ Cocokkan Saldo Bank</div><button class="modal-x" onclick="closeModal('m-rekon')">✕</button></div>
+    <div class="modal-h"><div class="t">⚖️ Cocokkan Saldo</div><button class="modal-x" onclick="closeModal('m-rekon')">✕</button></div>
     <div class="modal-c">
-      <div class="info-box ib-blue mb16">Buka mobile banking, lihat saldo rekening aslimu, lalu ketik di sini. App akan bandingkan dengan total kantong.</div>
-      <div class="fg"><label>Saldo Bank Asli (Rp)</label><input class="inp num-big" id="rk-bank" type="number" min="0" placeholder="0" oninput="hitungRekon()"/></div>
+      <div class="info-box ib-blue mb16">Hitung <strong>uang tunai</strong> di tangan & lihat <strong>saldo rekening</strong> di mobile banking, lalu ketik di sini. App membandingkan dengan catatan.</div>
+      <div class="fg"><label>🏦 Saldo Rekening Asli (Rp)</label><input class="inp" id="rk-bank" type="number" min="0" placeholder="0" oninput="hitungRekon()"/></div>
+      <div class="fg"><label>💵 Uang Tunai di Tangan (Rp)</label><input class="inp" id="rk-tunai" type="number" min="0" placeholder="0" oninput="hitungRekon()"/></div>
       <div class="card card-b" id="rk-hasil"></div>
-      <div class="info-box ib-amber" style="margin-top:12px">Kalau ada selisih, biasanya ada transaksi yang belum dicatat (biaya admin bank, transfer lupa catat, dll). Tambahkan transaksi penyesuaian.</div>
+      <div class="info-box ib-amber" style="margin-top:12px">Kalau ada selisih, biasanya ada transaksi belum dicatat (biaya admin bank, jajan tunai, dll). Tambahkan transaksi penyesuaian.</div>
     </div>
     <div class="modal-f"><button class="btn btn-sec btn-block" onclick="closeModal('m-rekon')">Tutup</button></div>
+  </div>
+</div>
+
+<!-- ===== MODAL: SNAPSHOT NERACA ===== -->
+<div class="modal-bd" id="m-neraca">
+  <div class="modal">
+    <div class="modal-h"><div class="t" id="mn-title">Data Neraca</div><button class="modal-x" onclick="closeModal('m-neraca')">✕</button></div>
+    <div class="modal-c">
+      <input type="hidden" id="mn-kantong"/>
+      <div class="info-box ib-blue mb16">Kas otomatis dari buku kas. Isi item lain (ambil dari app gas/batik atau hitung manual) untuk melengkapi neraca <strong id="mn-nama"></strong>.</div>
+      <div class="fg"><label>Piutang (uang di pelanggan, Rp)</label><input class="inp" id="mn-piutang" type="number" min="0" placeholder="0"/></div>
+      <div class="fg"><label>Nilai Stok / Persediaan (Rp)</label><input class="inp" id="mn-stok" type="number" min="0" placeholder="0"/></div>
+      <div class="fg"><label>Aset Tetap (mobil, alat, dll · Rp)</label><input class="inp" id="mn-aset" type="number" min="0" placeholder="0"/></div>
+      <div class="fg"><label>Hutang (ke supplier/agen/bank · Rp)</label><input class="inp" id="mn-hutang" type="number" min="0" placeholder="0"/></div>
+    </div>
+    <div class="modal-f"><button class="btn btn-primary btn-block" onclick="simpanNeraca()">💾 Simpan</button></div>
   </div>
 </div>
 
@@ -328,14 +368,19 @@
 
   // ---------- STATE ----------
   let currentUser = null;
-  let kantongList = [];        // {id, nama, icon, tipe, saldo_awal, urutan}
+  let kantongList = [];        // {id, nama, icon, tipe, saldo_awal, urutan}  (PEMILIK uang)
+  let akunList = [];           // {id, kode:'tunai'|'rekening', nama, icon, saldo_awal}  (LOKASI uang)
   let kasList = [];            // semua transaksi kas
   let config = null;           // pengaturan/config
-  let kategoriList = [];       // {id, nama, jenis}
+  let kategoriList = [];       // {id, nama, jenis, tipe}
   let _jenis = 'masuk';
+  let _transferMode = 'kantong'; // 'kantong' (prive/modal) | 'akun' (setor/tarik tunai)
   let riwayatFilterKantong = '';
-  let lapMode = 'bulan';       // 'bulan' | 'tahun'
+  let lapMode = 'bulan';       // 'minggu' | 'bulan' | 'tahun' | 'pilih'
+  let lapView = 'arus';        // 'arus' | 'labarugi' | 'neraca'
   let lapRef = new Date();     // periode acuan laporan
+  let lapDari = '', lapSampai = ''; // untuk mode 'pilih'
+  let neracaSnap = {};         // kantong_id -> {piutang,stok,aset_tetap,hutang}
   let _chartArus = null;
 
   // ---------- HELPERS ----------
@@ -395,11 +440,25 @@
       const kSnap = await getDocs(collection(db,'kantong'));
       kantongList = kSnap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(a.urutan||0)-(b.urutan||0));
 
+      const aSnap = await getDocs(collection(db,'akun'));
+      akunList = aSnap.docs.map(d=>({id:d.id,...d.data()}));
+
       const kasSnap = await getDocs(query(collection(db,'kas'), orderBy('tanggal','desc')));
       kasList = kasSnap.docs.map(d=>({id:d.id,...d.data()}));
 
       if(!config || !kantongList.length){ showSetup(); return; }
+      // Migrasi: kalau belum ada akun (user lama), buat Tunai(0) & Rekening(=total kantong)
+      if(!akunList.length){
+        const totalAwal = kantongList.reduce((a,k)=>a+(k.saldo_awal||0),0);
+        const b=writeBatch(db);
+        b.set(doc(collection(db,'akun')),{kode:'tunai',nama:'Tunai',icon:'💵',saldo_awal:0,urutan:0,created_at:serverTimestamp()});
+        b.set(doc(collection(db,'akun')),{kode:'rekening',nama:'Rekening',icon:'🏦',saldo_awal:totalAwal,urutan:1,created_at:serverTimestamp()});
+        await b.commit();
+        const aS=await getDocs(collection(db,'akun')); akunList=aS.docs.map(d=>({id:d.id,...d.data()}));
+      }
       await loadKategori();
+      const nSnap = await getDocs(collection(db,'snapshot_neraca'));
+      neracaSnap = {}; nSnap.forEach(d=>{ neracaSnap[d.id]=d.data(); });
       fillKantongSelects();
       renderBeranda(); renderRiwayat(); renderSaldo(); renderAtur();
     }catch(e){
@@ -446,6 +505,23 @@
     return s;
   }
   function saldoTotal(){ return kantongList.reduce((a,k)=>a+saldoKantong(k.id),0); }
+
+  // Lokasi uang: default transaksi lama tanpa akun_kode dianggap di 'rekening'
+  function kasAkun(t){ return t.akun_kode || 'rekening'; }
+  function saldoAkun(kode){
+    const a = akunList.find(x=>x.kode===kode); let s = a? (a.saldo_awal||0) : 0;
+    kasList.forEach(t=>{
+      if(t.jenis==='masuk'  && kasAkun(t)===kode) s += t.nominal||0;
+      else if(t.jenis==='keluar' && kasAkun(t)===kode) s -= t.nominal||0;
+      else if(t.jenis==='setor'){
+        if(t.akun_kode===kode) s -= t.nominal||0;       // keluar dari akun asal
+        if(t.akun_ke_kode===kode) s += t.nominal||0;     // masuk ke akun tujuan
+      }
+      // jenis 'transfer' (antar kantong) tidak mengubah saldo akun
+    });
+    return s;
+  }
+  function akunByKode(kode){ return akunList.find(a=>a.kode===kode); }
 
   // ============================================================
   //  NAV
@@ -494,13 +570,20 @@
     const btn = el('su-btn'); btn.disabled=true; btn.textContent='Menyimpan…';
     try{
       const batch = writeBatch(db);
+      let totalAwal=0;
       for(let i=0;i<n;i++){
         const nama=el('su-nm-'+i).value.trim()||('Kantong '+(i+1));
         const icon=el('su-ic-'+i).value.trim()||'💼';
         const saldo=parseFloat(el('su-sa-'+i).value)||0;
+        totalAwal+=saldo;
         const ref = doc(collection(db,'kantong'));
         batch.set(ref,{nama,icon,tipe:tipes[i]||'usaha',saldo_awal:saldo,urutan:i,created_at:serverTimestamp()});
       }
+      // Akun (lokasi uang): Tunai + Rekening
+      const saldoTunai = parseFloat(el('su-tunai').value)||0;
+      const saldoRek = Math.max(0, totalAwal - saldoTunai);
+      batch.set(doc(collection(db,'akun')),{kode:'tunai',   nama:'Tunai',   icon:'💵', saldo_awal:saldoTunai, urutan:0, created_at:serverTimestamp()});
+      batch.set(doc(collection(db,'akun')),{kode:'rekening',nama:'Rekening',icon:'🏦', saldo_awal:saldoRek,   urutan:1, created_at:serverTimestamp()});
       batch.set(doc(db,'pengaturan','config'),{
         tanggal_mulai: el('su-tgl').value||todayStr(),
         nama_bank: el('su-bank').value.trim()||'',
@@ -543,10 +626,14 @@
         <div class="rec">${config?.nama_bank?('Rekening: '+config.nama_bank+' · '):''}Cek cocok dgn bank di menu ⚖️ Saldo</div>
       </div>
       <div class="row mb16">
+        <div class="kcard"><div class="nm">💵 Tunai (cash)</div><div class="amt">${rp(saldoAkun('tunai'))}</div></div>
+        <div class="kcard"><div class="nm">🏦 Rekening</div><div class="amt">${rp(saldoAkun('rekening'))}</div></div>
+      </div>
+      <div class="row mb16">
         <div class="kcard"><div class="nm">⬇️ Masuk (bln ini)</div><div class="amt" style="color:var(--green-text)">${rp(masukBln)}</div></div>
         <div class="kcard"><div class="nm">⬆️ Keluar (bln ini)</div><div class="amt" style="color:var(--red)">${rp(keluarBln)}</div></div>
       </div>
-      <div class="sec-title">Saldo per Kantong</div>
+      <div class="sec-title">Saldo per Kantong (pemilik)</div>
       <div class="kgrid">${kcards}</div>
       <div class="sec-title">Transaksi Terakhir</div>
       <div class="card card-b">${recent}</div>`;
@@ -556,9 +643,11 @@
     const k = kantongList.find(x=>x.id===t.kantong_id);
     const d = tglFromKas(t);
     const tgl = d.toLocaleDateString('id-ID',{day:'2-digit',month:'short'});
+    const akName = c=>(akunByKode(c)?.nama||c);
     let ic,col,sign,meta;
-    if(t.jenis==='masuk'){ ic='⬇️';col='var(--green-text)';sign='+';meta=(k?.nama||'-'); }
-    else if(t.jenis==='keluar'){ ic='⬆️';col='var(--red)';sign='−';meta=(k?.nama||'-'); }
+    if(t.jenis==='masuk'){ ic='⬇️';col='var(--green-text)';sign='+';meta=`${k?.nama||'-'} · ${akName(kasAkun(t))}`; }
+    else if(t.jenis==='keluar'){ ic='⬆️';col='var(--red)';sign='−';meta=`${k?.nama||'-'} · ${akName(kasAkun(t))}`; }
+    else if(t.jenis==='setor'){ ic='💵';col='var(--blue)';sign='';meta=`${akName(t.akun_kode)} → ${akName(t.akun_ke_kode)}${k?(' · '+k.nama):''}`; }
     else { const kk=kantongList.find(x=>x.id===t.kantong_ke_id); ic='🔁';col='var(--blue)';sign='';meta=`${k?.nama||'?'} → ${kk?.nama||'?'}`; }
     const bg = t.jenis==='masuk'?'var(--green-light)':t.jenis==='keluar'?'var(--red-bg)':'var(--blue-bg)';
     return `<div class="kas-item" onclick="editKas('${t.id}')">
@@ -579,6 +668,9 @@
     el('rw-filter-kantong').innerHTML = '<option value="">Semua Kantong</option>'+opt;
     el('mi-kantong').innerHTML = opt;
     el('mi-kantong-ke').innerHTML = opt;
+    const aopt = akunList.map(a=>`<option value="${a.kode}">${a.icon||''} ${a.nama}</option>`).join('');
+    el('mi-akun').innerHTML = aopt;
+    el('mi-akun-ke').innerHTML = aopt;
   }
   window.renderRiwayat = function(){
     riwayatFilterKantong = el('rw-filter-kantong')?.value || '';
@@ -608,41 +700,76 @@
     el('mi-hapus').classList.add('hidden');
     el('mi-nominal').value=''; el('mi-ket').value=''; el('mi-tgl').value=todayStr();
     el('mi-nominal-prev').textContent='';
+    _transferMode='kantong';
     setJenis('masuk');
     openModal('m-input');
   };
   window.setJenis = function(j){
     _jenis=j;
     document.querySelectorAll('#mi-seg button').forEach(b=>b.classList.toggle('active',b.dataset.j===j));
-    el('mi-kantong-lbl').textContent = j==='transfer'?'Dari Kantong':'Kantong';
-    el('mi-kantong-ke-wrap').classList.toggle('hidden', j!=='transfer');
-    // kategori options (dari kategori terkelola)
-    const kat = katByJenis(j).length ? katByJenis(j) : (KATEGORI[j]||[]);
-    el('mi-kategori').innerHTML = kat.map(c=>`<option value="${c}">${c}</option>`).join('');
-    if(j==='transfer'){ el('mi-transfer-hint').textContent='Transfer tidak mengubah total saldo — hanya memindah uang antar kantong (mis. Prive: usaha→pribadi, Modal: pribadi→usaha).'; }
+    applyInputUI();
   };
+  window.setTransferMode = function(tm){
+    _transferMode=tm;
+    document.querySelectorAll('#mi-tmode button').forEach(b=>b.classList.toggle('active',b.dataset.tm===tm));
+    applyInputUI();
+  };
+  function applyInputUI(){
+    const j=_jenis, isTf=j==='transfer';
+    el('mi-tmode').classList.toggle('hidden', !isTf);
+    const akunMode = isTf && _transferMode==='akun';     // setor/tarik
+    const kantongMode = isTf && _transferMode==='kantong'; // prive/modal
+    // Akun
+    el('mi-akun-wrap').classList.toggle('hidden', isTf && !akunMode);
+    el('mi-akun-ke-wrap').classList.toggle('hidden', !akunMode);
+    el('mi-akun-lbl').textContent = akunMode?'Dari Akun':'Lokasi Uang';
+    // Kantong
+    el('mi-kantong-wrap').classList.remove('hidden');
+    el('mi-kantong-lbl').textContent = kantongMode?'Dari Kantong':(akunMode?'Milik Kantong':'Kantong');
+    el('mi-kantong-ke-wrap').classList.toggle('hidden', !kantongMode);
+    // Kategori (sembunyikan saat setor/tarik tunai)
+    el('mi-kategori-wrap').classList.toggle('hidden', akunMode);
+    if(!akunMode){
+      const jk = isTf?'transfer':j;
+      const kat = katByJenis(jk).length ? katByJenis(jk) : (KATEGORI[jk]||[]);
+      el('mi-kategori').innerHTML = kat.map(c=>`<option value="${c}">${c}</option>`).join('');
+    }
+    // Hint
+    const hint=el('mi-transfer-hint');
+    if(kantongMode){ hint.classList.remove('hidden'); hint.textContent='Antar kantong tidak mengubah total — Prive: usaha→pribadi, Setor Modal: pribadi→usaha.'; }
+    else if(akunMode){ hint.classList.remove('hidden'); hint.textContent='Setor Tunai (Tunai→Bank) / Tarik Tunai (Bank→Tunai). Total & pemilik (kantong) tetap, hanya lokasi uang berpindah.'; }
+    else hint.classList.add('hidden');
+  }
   window.previewNominal = function(){ const n=parseFloat(el('mi-nominal').value)||0; el('mi-nominal-prev').textContent = n>0?rp(n):''; };
 
   window.simpanKas = async function(){
     const nominal = parseFloat(el('mi-nominal').value)||0;
-    const kantong_id = el('mi-kantong').value;
-    const kategori = el('mi-kategori').value;
     const tglv = el('mi-tgl').value || todayStr();
     const ket = el('mi-ket').value.trim();
     if(nominal<=0){ toast('Nominal harus lebih dari 0','err'); return; }
+    const kantong_id = el('mi-kantong').value;
     if(!kantong_id){ toast('Pilih kantong','err'); return; }
-    let kantong_ke_id=null;
-    if(_jenis==='transfer'){
+
+    let jenisSimpan=_jenis, akun_kode=null, akun_ke_kode=null, kantong_ke_id=null, kategori=el('mi-kategori').value;
+    if(_jenis==='masuk'||_jenis==='keluar'){
+      akun_kode = el('mi-akun').value || 'rekening';
+    } else if(_jenis==='transfer' && _transferMode==='kantong'){
       kantong_ke_id = el('mi-kantong-ke').value;
       if(!kantong_ke_id||kantong_ke_id===kantong_id){ toast('Pilih kantong tujuan yang berbeda','err'); return; }
+    } else if(_jenis==='transfer' && _transferMode==='akun'){
+      jenisSimpan='setor';
+      akun_kode = el('mi-akun').value; akun_ke_kode = el('mi-akun-ke').value;
+      if(!akun_ke_kode||akun_ke_kode===akun_kode){ toast('Pilih akun tujuan yang berbeda','err'); return; }
+      kategori = (akun_kode==='tunai'&&akun_ke_kode==='rekening')?'Setor Tunai (Tunai→Bank)'
+               : (akun_kode==='rekening'&&akun_ke_kode==='tunai')?'Tarik Tunai (Bank→Tunai)':'Pindah Akun';
     }
     const btn=el('mi-simpan'); btn.disabled=true; btn.textContent='Menyimpan…';
     try{
       const d=new Date(tglv+'T'+new Date().toTimeString().slice(0,8));
       const payload={
-        jenis:_jenis, nominal, kantong_id,
+        jenis:jenisSimpan, nominal, kantong_id,
         kantong_id_nama:(kantongList.find(k=>k.id===kantong_id)||{}).nama||'',
-        kantong_ke_id, kategori, keterangan:ket,
+        kantong_ke_id, akun_kode, akun_ke_kode, kategori, keterangan:ket,
         tanggal:Timestamp.fromDate(d), tanggal_str:tglv,
         dicatat_oleh:currentUser.uid, updated_at:serverTimestamp()
       };
@@ -659,11 +786,17 @@
     const t=kasList.find(x=>x.id===id); if(!t) return;
     el('mi-id').value=id; el('mi-title').textContent='Edit Transaksi';
     el('mi-hapus').classList.remove('hidden');
-    setJenis(t.jenis);
+    if(t.jenis==='setor'){ _jenis='transfer'; _transferMode='akun'; }
+    else if(t.jenis==='transfer'){ _jenis='transfer'; _transferMode='kantong'; }
+    else { _jenis=t.jenis; _transferMode='kantong'; }
+    document.querySelectorAll('#mi-seg button').forEach(b=>b.classList.toggle('active',b.dataset.j===_jenis));
+    document.querySelectorAll('#mi-tmode button').forEach(b=>b.classList.toggle('active',b.dataset.tm===_transferMode));
+    applyInputUI();
     el('mi-nominal').value=t.nominal; previewNominal();
-    el('mi-kantong').value=t.kantong_id;
-    if(t.jenis==='transfer') el('mi-kantong-ke').value=t.kantong_ke_id||'';
-    // pastikan kategori ada di list
+    el('mi-kantong').value=t.kantong_id||'';
+    if(_jenis==='transfer'&&_transferMode==='kantong') el('mi-kantong-ke').value=t.kantong_ke_id||'';
+    if(t.akun_kode) el('mi-akun').value=t.akun_kode;
+    if(t.akun_ke_kode) el('mi-akun-ke').value=t.akun_ke_kode;
     if(t.kategori && ![...el('mi-kategori').options].some(o=>o.value===t.kategori)){
       const o=document.createElement('option'); o.value=t.kategori; o.textContent=t.kategori; el('mi-kategori').appendChild(o);
     }
@@ -682,7 +815,7 @@
   async function reloadKas(){
     const kasSnap = await getDocs(query(collection(db,'kas'), orderBy('tanggal','desc')));
     kasList = kasSnap.docs.map(d=>({id:d.id,...d.data()}));
-    renderBeranda(); renderRiwayat(); renderSaldo();
+    renderBeranda(); renderRiwayat(); renderSaldo(); renderLaporan();
   }
 
   // ============================================================
@@ -704,23 +837,35 @@
         <div style="font-size:11px;color:var(--t3);margin-top:3px">${pct}% dari total · awal ${rp(k.saldo_awal||0)}</div>
       </div>`;
     }).join('');
+    const tunai=saldoAkun('tunai'), rek=saldoAkun('rekening');
     el('saldo-body').innerHTML=`
-      <div class="hero"><div class="lbl">TOTAL SEMUA KANTONG</div><div class="val">${rp(total)}</div>
-        <div class="rec">Angka ini yang harus sama dengan saldo rekening bankmu</div></div>
-      <button class="btn btn-primary btn-block mb16" onclick="openRekon()">⚖️ Cocokkan dengan Saldo Bank</button>
+      <div class="hero"><div class="lbl">TOTAL SEMUA UANG</div><div class="val">${rp(total)}</div>
+        <div class="rec">💵 Tunai ${rp(tunai)} + 🏦 Rekening ${rp(rek)}</div></div>
+      <div class="sec-title">Lokasi Uang (fisik)</div>
+      <div class="row mb12">
+        <div class="kcard"><div class="nm">💵 Tunai</div><div class="amt">${rp(tunai)}</div><div class="sub">cash di tangan</div></div>
+        <div class="kcard"><div class="nm">🏦 Rekening</div><div class="amt">${rp(rek)}</div><div class="sub">${config?.nama_bank||'bank'}</div></div>
+      </div>
+      <button class="btn btn-primary btn-block mb16" onclick="openRekon()">⚖️ Cocokkan Saldo (Tunai &amp; Bank)</button>
+      <div class="sec-title">Pemilik Uang (kantong)</div>
       <div class="card card-b">${rows||'<div class="empty">Belum ada kantong</div>'}</div>`;
   }
-  window.openRekon = function(){ el('rk-bank').value=''; el('rk-hasil').innerHTML=''; hitungRekon(); openModal('m-rekon'); };
+  window.openRekon = function(){ el('rk-tunai').value=''; el('rk-bank').value=''; el('rk-hasil').innerHTML=''; hitungRekon(); openModal('m-rekon'); };
   window.hitungRekon = function(){
-    const bank=parseFloat(el('rk-bank').value)||0;
-    const total=saldoTotal();
-    const selisih = bank-total;
-    let html=`<div style="display:flex;justify-content:space-between;padding:6px 0"><span>Total kantong (app)</span><strong>${rp(total)}</strong></div>
-      <div style="display:flex;justify-content:space-between;padding:6px 0;border-top:1px solid var(--border)"><span>Saldo bank asli</span><strong>${rp(bank)}</strong></div>`;
-    if(!el('rk-bank').value){ html+=`<div class="info-box ib-blue" style="margin-top:8px">Masukkan saldo bank untuk membandingkan.</div>`; }
-    else if(Math.abs(selisih)<1){ html+=`<div class="info-box ib-green" style="margin-top:8px">✅ Cocok! Pencatatan sesuai saldo bank.</div>`; }
-    else { html+=`<div class="info-box ib-amber" style="margin-top:8px"><strong>Selisih ${rp(Math.abs(selisih))}</strong> — ${selisih>0?'ada uang masuk yang belum dicatat':'ada pengeluaran yang belum dicatat'}.</div>`; }
-    el('rk-hasil').innerHTML=html;
+    const aBank=saldoAkun('rekening'), aTunai=saldoAkun('tunai');
+    const vBank=el('rk-bank').value, vTunai=el('rk-tunai').value;
+    const bank=parseFloat(vBank)||0, tunai=parseFloat(vTunai)||0;
+    function baris(lbl,app,real,isi){
+      let s='';
+      if(!isi) s=`<div class="info-box ib-blue" style="margin-top:6px">Isi untuk membandingkan.</div>`;
+      else { const d=real-app; s = Math.abs(d)<1
+        ? `<div class="info-box ib-green" style="margin-top:6px">✅ ${lbl} cocok.</div>`
+        : `<div class="info-box ib-amber" style="margin-top:6px"><strong>${lbl} selisih ${rp(Math.abs(d))}</strong> — ${d>0?'ada pemasukan belum dicatat':'ada pengeluaran belum dicatat'}.</div>`; }
+      return `<div style="display:flex;justify-content:space-between;padding:6px 0"><span>${lbl} (app)</span><strong>${rp(app)}</strong></div>
+        ${isi?`<div style="display:flex;justify-content:space-between;padding:0 0 6px"><span>${lbl} (asli)</span><strong>${rp(real)}</strong></div>`:''}${s}`;
+    }
+    el('rk-hasil').innerHTML = `<div style="font-weight:700;margin-bottom:4px">🏦 Rekening</div>${baris('Rekening',aBank,bank,vBank!=='')}
+      <div style="font-weight:700;margin:10px 0 4px;border-top:1px solid var(--border);padding-top:8px">💵 Tunai</div>${baris('Tunai',aTunai,tunai,vTunai!=='')}`;
   };
 
   // ============================================================
@@ -728,25 +873,56 @@
   // ============================================================
   window.setLapMode = function(m){ lapMode=m; lapRef=new Date();
     document.querySelectorAll('#lap-seg button').forEach(b=>b.classList.toggle('active',b.dataset.mode===m));
+    el('lap-nav').classList.toggle('hidden', m==='pilih');
+    el('lap-pilih').classList.toggle('hidden', m!=='pilih');
+    if(m==='pilih'){
+      if(!lapDari){ const a=new Date(); a.setDate(a.getDate()-6); lapDari=ymd(a); lapSampai=todayStr(); }
+      el('lap-dari').value=lapDari; el('lap-sampai').value=lapSampai;
+    }
     renderLaporan();
   };
+  window.lapPilihChange = function(){ lapDari=el('lap-dari').value; lapSampai=el('lap-sampai').value; renderLaporan(); };
+  function startOfWeek(d){ const x=new Date(d); const day=x.getDay(); x.setDate(x.getDate()-((day+6)%7)); x.setHours(0,0,0,0); return x; } // Senin
   window.lapNav = function(delta){
-    if(lapMode==='bulan') lapRef = new Date(lapRef.getFullYear(), lapRef.getMonth()+delta, 1);
-    else lapRef = new Date(lapRef.getFullYear()+delta, 0, 1);
+    if(lapMode==='minggu') lapRef = new Date(lapRef.getFullYear(),lapRef.getMonth(),lapRef.getDate()+delta*7);
+    else if(lapMode==='bulan') lapRef = new Date(lapRef.getFullYear(), lapRef.getMonth()+delta, 1);
+    else if(lapMode==='tahun') lapRef = new Date(lapRef.getFullYear()+delta, 0, 1);
     renderLaporan();
   };
   function lapRange(){
+    const fmt=d=>d.toLocaleDateString('id-ID',{day:'numeric',month:'short',year:'numeric'});
+    if(lapMode==='minggu'){
+      const dari=startOfWeek(lapRef);
+      const sampai=new Date(dari); sampai.setDate(dari.getDate()+6); sampai.setHours(23,59,59,999);
+      return {dari,sampai,label:`${fmt(dari)} – ${fmt(sampai)}`};
+    }
     if(lapMode==='bulan'){
       const dari=new Date(lapRef.getFullYear(),lapRef.getMonth(),1);
       const sampai=new Date(lapRef.getFullYear(),lapRef.getMonth()+1,0,23,59,59,999);
       const bln=['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
       return {dari,sampai,label:`${bln[dari.getMonth()]} ${dari.getFullYear()}`};
     }
+    if(lapMode==='pilih'){
+      const dari=new Date((lapDari||todayStr())+'T00:00:00');
+      const sampai=new Date((lapSampai||todayStr())+'T23:59:59');
+      return {dari,sampai,label:`${fmt(dari)} – ${fmt(sampai)}`};
+    }
     const dari=new Date(lapRef.getFullYear(),0,1);
     const sampai=new Date(lapRef.getFullYear(),11,31,23,59,59,999);
     return {dari,sampai,label:`Tahun ${dari.getFullYear()}`};
   }
+  window.setLapView = function(v){
+    lapView=v;
+    document.querySelectorAll('#lap-view-seg button').forEach(b=>b.classList.toggle('active',b.dataset.view===v));
+    el('lap-period-card').classList.toggle('hidden', v==='neraca'); // neraca = posisi saat ini
+    renderLaporan();
+  };
   function renderLaporan(){
+    if(lapView==='labarugi') return renderLabaRugi();
+    if(lapView==='neraca') return renderNeraca();
+    return renderArusKas();
+  }
+  function renderArusKas(){
     const {dari,sampai,label}=lapRange();
     el('lap-label').textContent=label;
     const inRange=t=>{const d=tglFromKas(t);return d>=dari&&d<=sampai;};
@@ -816,7 +992,7 @@
   function renderChartArus(dari,sampai){
     if(_chartArus){ _chartArus.destroy(); _chartArus=null; }
     const ctx=el('chart-arus')?.getContext('2d'); if(!ctx) return;
-    if(lapMode==='bulan'){
+    if(lapMode!=='tahun'){
       // bar per kantong: masuk vs keluar
       const labels=[], dMasuk=[], dKeluar=[];
       kantongList.forEach(k=>{
@@ -844,6 +1020,105 @@
         scales:{y:{ticks:{callback:v=>'Rp '+(v/1000000).toFixed(1)+'jt'},grid:{color:'#eef0ef'}}}}});
     }
   }
+
+  // ============================================================
+  //  TAHAP 3 — LABA-RUGI per usaha (basis kas)
+  // ============================================================
+  function renderLabaRugi(){
+    const {dari,sampai,label}=lapRange();
+    el('lap-label').textContent=label;
+    const inRange=t=>{const d=tglFromKas(t);return d>=dari&&d<=sampai;};
+    const trx=kasList.filter(inRange);
+    const usaha=kantongList.filter(k=>k.tipe==='usaha');
+    let totPend=0,totBeban=0;
+    const cards=usaha.map(k=>{
+      const masuk=trx.filter(t=>t.jenis==='masuk'&&t.kantong_id===k.id);
+      const keluar=trx.filter(t=>t.jenis==='keluar'&&t.kantong_id===k.id);
+      const pend=masuk.reduce((a,t)=>a+(t.nominal||0),0);
+      const beban=keluar.reduce((a,t)=>a+(t.nominal||0),0);
+      totPend+=pend; totBeban+=beban;
+      const laba=pend-beban; const margin=pend>0?(laba/pend*100):0;
+      // rincian beban per kategori
+      const byCat={}; keluar.forEach(t=>byCat[t.kategori||'Lainnya']=(byCat[t.kategori||'Lainnya']||0)+(t.nominal||0));
+      const catRows=Object.entries(byCat).sort((a,b)=>b[1]-a[1]).map(([c,v])=>`<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--t2);padding:2px 0"><span>· ${c}</span><span>${rp(v)}</span></div>`).join('');
+      return `<div class="card card-b mb12">
+        <div style="font-weight:800;font-size:15px;margin-bottom:8px">${k.icon||'💼'} ${k.nama}</div>
+        <div style="display:flex;justify-content:space-between;padding:4px 0"><span>Pendapatan</span><strong style="color:var(--green-text)">${rp(pend)}</strong></div>
+        <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border)"><span>Beban / HPP</span><strong style="color:var(--red)">−${rp(beban)}</strong></div>
+        ${catRows?`<div style="margin:6px 0">${catRows}</div>`:''}
+        <div style="display:flex;justify-content:space-between;padding:6px 0;font-weight:800"><span>Laba / Rugi</span><span style="color:${laba>=0?'var(--green-text)':'var(--red)'}">${laba>=0?'':'−'}${rp(Math.abs(laba))}</span></div>
+        <div style="font-size:11px;color:var(--t3);text-align:right">margin ${margin.toFixed(1)}%</div>
+      </div>`;
+    }).join('');
+    const labaTot=totPend-totBeban;
+    el('laporan-body').innerHTML=`
+      <div class="info-box ib-blue mb12">Basis kas: Pendapatan = uang masuk usaha, Beban = uang keluar usaha pada periode ini. Prive/Modal & setor tunai tidak dihitung sebagai laba.</div>
+      <div class="kcard mb16" style="text-align:center">
+        <div class="nm" style="justify-content:center">📈 Laba Bersih Gabungan</div>
+        <div class="amt" style="font-size:26px;color:${labaTot>=0?'var(--green-text)':'var(--red)'}">${labaTot>=0?'':'−'}${rp(Math.abs(labaTot))}</div>
+        <div class="sub">Pendapatan ${rp(totPend)} − Beban ${rp(totBeban)}</div>
+      </div>
+      ${cards||'<div class="empty">Belum ada kantong usaha</div>'}`;
+  }
+
+  // ============================================================
+  //  TAHAP 4 — NERACA (posisi saat ini) per usaha + konsolidasi
+  // ============================================================
+  function renderNeraca(){
+    const usaha=kantongList.filter(k=>k.tipe==='usaha');
+    const tgl=new Date().toLocaleDateString('id-ID',{day:'numeric',month:'long',year:'numeric'});
+    let kAset=0,kKewaj=0;
+    const cards=kantongList.map(k=>{
+      const kas=saldoKantong(k.id);
+      const sn=neracaSnap[k.id]||{};
+      const piutang=sn.piutang||0, stok=sn.stok||0, aset=sn.aset_tetap||0, hutang=sn.hutang||0;
+      const totalAset=kas+piutang+stok+aset;
+      const modal=totalAset-hutang;
+      kAset+=totalAset; kKewaj+=hutang;
+      const isUsaha=k.tipe==='usaha';
+      return `<div class="card card-b mb12">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <span style="font-weight:800;font-size:15px">${k.icon||'💼'} ${k.nama}</span>
+          ${isUsaha?`<button class="btn btn-sec btn-sm" onclick="openNeraca('${k.id}')">✏️ Isi Data</button>`:''}
+        </div>
+        <div style="font-size:11px;font-weight:700;color:var(--green-text);text-transform:uppercase;margin-top:4px">Aset</div>
+        <div style="display:flex;justify-content:space-between;font-size:13px;padding:2px 0"><span>Kas (otomatis)</span><span>${rp(kas)}</span></div>
+        ${isUsaha?`<div style="display:flex;justify-content:space-between;font-size:13px;padding:2px 0"><span>Piutang</span><span>${rp(piutang)}</span></div>
+        <div style="display:flex;justify-content:space-between;font-size:13px;padding:2px 0"><span>Stok / Persediaan</span><span>${rp(stok)}</span></div>
+        <div style="display:flex;justify-content:space-between;font-size:13px;padding:2px 0"><span>Aset Tetap</span><span>${rp(aset)}</span></div>`:''}
+        <div style="display:flex;justify-content:space-between;font-size:13px;padding:4px 0;border-top:1px solid var(--border);font-weight:700"><span>Total Aset</span><span>${rp(totalAset)}</span></div>
+        ${isUsaha?`<div style="font-size:11px;font-weight:700;color:var(--red);text-transform:uppercase;margin-top:6px">Kewajiban</div>
+        <div style="display:flex;justify-content:space-between;font-size:13px;padding:2px 0"><span>Hutang</span><span style="color:var(--red)">${rp(hutang)}</span></div>`:''}
+        <div style="display:flex;justify-content:space-between;padding:6px 0;border-top:1px solid var(--border);font-weight:800"><span>Modal (Aset − Hutang)</span><span style="color:${modal>=0?'var(--green-text)':'var(--red)'}">${rp(modal)}</span></div>
+      </div>`;
+    }).join('');
+    const modalTot=kAset-kKewaj;
+    el('laporan-body').innerHTML=`
+      <div class="info-box ib-blue mb12">Neraca posisi <strong>${tgl}</strong>. Kas otomatis dari buku kas. Piutang/Stok/Aset/Hutang diisi manual (ambil dari app gas &amp; batik) lewat tombol ✏️.</div>
+      <div class="kcard mb16" style="text-align:center">
+        <div class="nm" style="justify-content:center">📊 Total Modal (Ekuitas)</div>
+        <div class="amt" style="font-size:24px">${rp(modalTot)}</div>
+        <div class="sub">Aset ${rp(kAset)} − Hutang ${rp(kKewaj)}</div>
+      </div>
+      ${cards}`;
+  }
+  window.openNeraca = function(kid){
+    const k=kantongList.find(x=>x.id===kid); if(!k) return;
+    const sn=neracaSnap[kid]||{};
+    el('mn-kantong').value=kid; el('mn-nama').textContent=k.nama;
+    el('mn-piutang').value=sn.piutang||''; el('mn-stok').value=sn.stok||'';
+    el('mn-aset').value=sn.aset_tetap||''; el('mn-hutang').value=sn.hutang||'';
+    openModal('m-neraca');
+  };
+  window.simpanNeraca = async function(){
+    const kid=el('mn-kantong').value; if(!kid) return;
+    const data={ piutang:parseFloat(el('mn-piutang').value)||0, stok:parseFloat(el('mn-stok').value)||0,
+      aset_tetap:parseFloat(el('mn-aset').value)||0, hutang:parseFloat(el('mn-hutang').value)||0, updated_at:serverTimestamp() };
+    try{
+      await setDoc(doc(db,'snapshot_neraca',kid),data,{merge:true});
+      neracaSnap[kid]=data; closeModal('m-neraca'); toast('Data neraca disimpan ✓','ok'); renderNeraca();
+    }catch(e){ toast('Gagal: '+e.message,'err'); }
+  };
 
   // ============================================================
   //  PENGATURAN / KANTONG CRUD

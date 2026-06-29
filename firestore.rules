@@ -7,9 +7,8 @@ service cloud.firestore {
 
     match /pengaturan/{doc} { allow read, write: if isLoggedIn(); }
     match /kantong/{doc}    { allow read, write: if isLoggedIn(); }
+    match /akun/{doc}       { allow read, write: if isLoggedIn(); }
     match /kas/{doc}        { allow read, write: if isLoggedIn(); }
-
-    // (disiapkan untuk tahap berikutnya)
     match /kategori/{doc}        { allow read, write: if isLoggedIn(); }
     match /snapshot_neraca/{doc} { allow read, write: if isLoggedIn(); }
   }
