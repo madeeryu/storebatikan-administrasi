@@ -114,6 +114,10 @@
     @keyframes sp{to{transform:rotate(360deg)}}
     .num-big{font-size:30px!important;font-weight:800;text-align:center;padding:8px 0}
     select.inp{cursor:pointer}
+    details>summary{list-style:none}
+    details>summary::-webkit-details-marker{display:none}
+    details>summary::after{content:'▾';color:var(--t3);margin-left:6px}
+    details[open]>summary::after{content:'▴'}
   </style>
 </head>
 <body>
@@ -149,11 +153,30 @@
     <!-- RIWAYAT -->
     <div class="page" id="page-riwayat">
       <div class="page-title">Riwayat Kas</div>
-      <div class="page-sub">Semua uang masuk, keluar, dan transfer antar kantong</div>
+      <div class="page-sub">Semua uang masuk, keluar, transfer & setor tunai</div>
       <div class="card card-b mb12">
-        <label>Filter Kantong</label>
-        <select class="inp" id="rw-filter-kantong" onchange="renderRiwayat()"><option value="">Semua Kantong</option></select>
+        <div class="row mb12" style="gap:8px">
+          <div style="flex:1"><label style="font-size:11px">Dari Tanggal</label><input class="inp" type="date" id="rw-dari" onchange="renderRiwayat()"/></div>
+          <div style="flex:1"><label style="font-size:11px">Sampai</label><input class="inp" type="date" id="rw-sampai" onchange="renderRiwayat()"/></div>
+        </div>
+        <div class="row mb12" style="gap:8px">
+          <div style="flex:1"><label style="font-size:11px">Jenis</label>
+            <select class="inp" id="rw-jenis" onchange="renderRiwayat()">
+              <option value="">Semua Jenis</option><option value="masuk">⬇️ Masuk</option><option value="keluar">⬆️ Keluar</option>
+              <option value="transfer">🔁 Transfer Kantong</option><option value="setor">💵 Setor/Tarik Tunai</option>
+            </select></div>
+          <div style="flex:1"><label style="font-size:11px">Lokasi</label>
+            <select class="inp" id="rw-akun" onchange="renderRiwayat()"><option value="">Semua Lokasi</option><option value="tunai">💵 Tunai</option><option value="rekening">🏦 Rekening</option></select></div>
+        </div>
+        <div class="row" style="gap:8px">
+          <div style="flex:1"><label style="font-size:11px">Kantong</label>
+            <select class="inp" id="rw-filter-kantong" onchange="renderRiwayat()"><option value="">Semua Kantong</option></select></div>
+          <div style="flex:1"><label style="font-size:11px">Kategori</label>
+            <select class="inp" id="rw-kategori" onchange="renderRiwayat()"><option value="">Semua Kategori</option></select></div>
+        </div>
+        <button class="btn btn-sec btn-sm btn-block" style="margin-top:10px" onclick="resetFilterRiwayat()">↺ Reset Filter</button>
       </div>
+      <div class="card card-b mb12" id="riwayat-ringkas"></div>
       <div class="card card-b" id="riwayat-list"><div class="loading"><div class="spin"></div></div></div>
     </div>
 
@@ -672,16 +695,50 @@
     const aopt = akunList.map(a=>`<option value="${a.kode}">${a.icon||''} ${a.nama}</option>`).join('');
     el('mi-akun').innerHTML = aopt;
     el('mi-akun-ke').innerHTML = aopt;
+    // dropdown kategori di filter riwayat (nama unik)
+    const rk=el('rw-kategori');
+    if(rk){ const names=[...new Set(kategoriList.map(k=>k.nama))].sort();
+      rk.innerHTML='<option value="">Semua Kategori</option>'+names.map(n=>`<option value="${n}">${n}</option>`).join(''); }
   }
+  window.resetFilterRiwayat = function(){
+    ['rw-dari','rw-sampai','rw-jenis','rw-akun','rw-filter-kantong','rw-kategori'].forEach(id=>{ const e=el(id); if(e)e.value=''; });
+    renderRiwayat();
+  };
   window.renderRiwayat = function(){
-    riwayatFilterKantong = el('rw-filter-kantong')?.value || '';
-    let list = kasList;
-    if(riwayatFilterKantong) list = list.filter(t=>t.kantong_id===riwayatFilterKantong||t.kantong_ke_id===riwayatFilterKantong);
+    const fKantong=el('rw-filter-kantong')?.value||'';
+    const fJenis=el('rw-jenis')?.value||'';
+    const fAkun=el('rw-akun')?.value||'';
+    const fKat=el('rw-kategori')?.value||'';
+    const fDari=el('rw-dari')?.value||'';
+    const fSampai=el('rw-sampai')?.value||'';
+
+    let list = kasList.filter(t=>{
+      if(fKantong && t.kantong_id!==fKantong && t.kantong_ke_id!==fKantong) return false;
+      if(fJenis && t.jenis!==fJenis) return false;
+      if(fKat && t.kategori!==fKat) return false;
+      if(fAkun){
+        const cocok = (kasAkun(t)===fAkun) || (t.jenis==='setor' && (t.akun_kode===fAkun||t.akun_ke_kode===fAkun));
+        if(!cocok) return false;
+      }
+      if(fDari || fSampai){
+        const ds=ymd(tglFromKas(t));
+        if(fDari && ds<fDari) return false;
+        if(fSampai && ds>fSampai) return false;
+      }
+      return true;
+    });
+
+    // Ringkasan hasil filter
+    let tM=0,tK=0; list.forEach(t=>{ if(t.jenis==='masuk')tM+=t.nominal||0; if(t.jenis==='keluar')tK+=t.nominal||0; });
+    el('riwayat-ringkas').innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">
+      <span style="font-size:12px;color:var(--t2)">${list.length} transaksi</span>
+      <span style="font-weight:700"><span style="color:var(--green-text)">+${rp(tM)}</span> / <span style="color:var(--red)">−${rp(tK)}</span> · Net <strong style="color:${tM-tK>=0?'var(--green-text)':'var(--red)'}">${tM-tK>=0?'+':'−'}${rp(Math.abs(tM-tK))}</strong></span></div>`;
+
     // group by tanggal
     const groups={};
     list.forEach(t=>{ const key=ymd(tglFromKas(t)); (groups[key]=groups[key]||[]).push(t); });
     const keys=Object.keys(groups).sort((a,b)=>b.localeCompare(a));
-    if(!keys.length){ el('riwayat-list').innerHTML='<div class="empty">Belum ada transaksi pada filter ini.</div>'; return; }
+    if(!keys.length){ el('riwayat-list').innerHTML='<div class="empty">Tidak ada transaksi pada filter ini.</div>'; return; }
     el('riwayat-list').innerHTML = keys.map(key=>{
       const d=new Date(key+'T00:00:00');
       const head=d.toLocaleDateString('id-ID',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
@@ -936,40 +993,50 @@
     const trx=kasList.filter(inRange);
 
     let masuk=0,keluar=0;
-    const perK={}; kantongList.forEach(k=>perK[k.id]={masuk:0,keluar:0});
-    let priveTot=0, modalTot=0; const privePer={}, modalPer={};
+    const perK={}; kantongList.forEach(k=>perK[k.id]={masuk:0,keluar:0,trx:[]});
+    const perA={}; akunList.forEach(a=>perA[a.kode]={masuk:0,keluar:0,setorIn:0,setorOut:0});
     trx.forEach(t=>{
-      if(t.jenis==='masuk'){ masuk+=t.nominal||0; if(perK[t.kantong_id])perK[t.kantong_id].masuk+=t.nominal||0; }
-      else if(t.jenis==='keluar'){ keluar+=t.nominal||0; if(perK[t.kantong_id])perK[t.kantong_id].keluar+=t.nominal||0; }
-      else if(t.jenis==='transfer'){
-        const src=kantongList.find(k=>k.id===t.kantong_id);
-        const dst=kantongList.find(k=>k.id===t.kantong_ke_id);
-        if(src&&dst){
-          if(src.tipe==='usaha'&&dst.tipe==='pribadi'){ priveTot+=t.nominal||0; privePer[src.id]=(privePer[src.id]||0)+(t.nominal||0); }
-          else if(src.tipe==='pribadi'&&dst.tipe==='usaha'){ modalTot+=t.nominal||0; modalPer[dst.id]=(modalPer[dst.id]||0)+(t.nominal||0); }
-        }
-      }
+      if(t.jenis==='masuk'){ masuk+=t.nominal||0; if(perK[t.kantong_id]){perK[t.kantong_id].masuk+=t.nominal||0;perK[t.kantong_id].trx.push(t);} if(perA[kasAkun(t)])perA[kasAkun(t)].masuk+=t.nominal||0; }
+      else if(t.jenis==='keluar'){ keluar+=t.nominal||0; if(perK[t.kantong_id]){perK[t.kantong_id].keluar+=t.nominal||0;perK[t.kantong_id].trx.push(t);} if(perA[kasAkun(t)])perA[kasAkun(t)].keluar+=t.nominal||0; }
+      else if(t.jenis==='setor'){ if(perA[t.akun_kode])perA[t.akun_kode].setorOut+=t.nominal||0; if(perA[t.akun_ke_kode])perA[t.akun_ke_kode].setorIn+=t.nominal||0; if(perK[t.kantong_id])perK[t.kantong_id].trx.push(t); }
+      else if(t.jenis==='transfer'){ if(perK[t.kantong_id])perK[t.kantong_id].trx.push(t); if(perK[t.kantong_ke_id])perK[t.kantong_ke_id].trx.push(t); }
     });
     const bersih=masuk-keluar;
 
-    // Tracker Prive & Modal per kantong usaha
-    const usahaK=kantongList.filter(k=>k.tipe==='usaha');
-    const priveRows = usahaK.map(k=>{
-      const p=privePer[k.id]||0, m=modalPer[k.id]||0, net=m-p;
-      return `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
-        <span style="font-weight:600">${k.icon||'💼'} ${k.nama}</span>
-        <span style="font-size:12px;text-align:right">
-          <span style="color:var(--red)">Prive −${rp(p)}</span> · <span style="color:var(--green-text)">Modal +${rp(m)}</span><br>
-          <strong style="color:${net>=0?'var(--green-text)':'var(--red)'}">Net ${net>=0?'+':'−'}${rp(Math.abs(net))}</strong>
-        </span></div>`;
+    // Info Lokasi Uang (Tunai vs Rekening)
+    const akunCards = akunList.map(a=>{
+      const x=perA[a.kode]||{masuk:0,keluar:0,setorIn:0,setorOut:0};
+      const st=(x.setorIn||x.setorOut)?` · setor/tarik <span style="color:var(--green-text)">+${rp(x.setorIn)}</span>/<span style="color:var(--red)">−${rp(x.setorOut)}</span>`:'';
+      return `<div class="card card-b mb12">
+        <div style="display:flex;justify-content:space-between;align-items:center"><strong>${a.icon||''} ${a.nama}</strong><span style="font-weight:800">${rp(saldoAkun(a.kode))}</span></div>
+        <div style="font-size:12px;color:var(--t2);margin-top:4px">Periode: <span style="color:var(--green-text)">+${rp(x.masuk)}</span> / <span style="color:var(--red)">−${rp(x.keluar)}</span>${st}</div>
+      </div>`;
     }).join('');
 
-    const kRows = kantongList.map(k=>{
-      const x=perK[k.id]||{masuk:0,keluar:0};
-      return `<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border);font-size:13px">
-        <span style="font-weight:600">${k.icon||'💼'} ${k.nama}</span>
-        <span><span style="color:var(--green-text)">+${rp(x.masuk)}</span> / <span style="color:var(--red)">−${rp(x.keluar)}</span></span>
-      </div>`;
+    // Rekap detail per kantong (expandable)
+    const catRows=(obj,col,sign)=>Object.entries(obj).sort((a,b)=>b[1]-a[1]).map(([c,v])=>`<div style="display:flex;justify-content:space-between;font-size:12px;padding:2px 0;color:var(--t2)"><span>${c}</span><span style="color:${col}">${sign}${rp(v)}</span></div>`).join('');
+    const kantongCards = kantongList.map(k=>{
+      const x=perK[k.id]; const net=x.masuk-x.keluar;
+      const catM={}, catK={};
+      x.trx.forEach(t=>{ if(t.jenis==='masuk')catM[t.kategori||'-']=(catM[t.kategori||'-']||0)+(t.nominal||0); if(t.jenis==='keluar')catK[t.kategori||'-']=(catK[t.kategori||'-']||0)+(t.nominal||0); });
+      const trxList=[...x.trx].sort((a,b)=>tglFromKas(b)-tglFromKas(a)).map(t=>{
+        const d=tglFromKas(t).toLocaleDateString('id-ID',{day:'2-digit',month:'short'});
+        let s='',col='var(--blue)';
+        if(t.jenis==='masuk'){s='+';col='var(--green-text)';} else if(t.jenis==='keluar'){s='−';col='var(--red)';}
+        return `<div style="display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-bottom:1px solid var(--border)"><span style="min-width:0;flex:1">${d} · ${t.kategori||'-'} <span style="color:var(--t3)">(${akunByKode(kasAkun(t))?.nama||'-'})</span></span><span style="color:${col};white-space:nowrap">${s}${rp(t.nominal)}</span></div>`;
+      }).join('');
+      return `<details class="card card-b mb12">
+        <summary style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:8px">
+          <span style="font-weight:700">${k.icon||'💼'} ${k.nama}</span>
+          <span style="font-size:12.5px;text-align:right"><span style="color:var(--green-text)">+${rp(x.masuk)}</span> / <span style="color:var(--red)">−${rp(x.keluar)}</span> · <strong style="color:${net>=0?'var(--green-text)':'var(--red)'}">${net>=0?'+':'−'}${rp(Math.abs(net))}</strong></span>
+        </summary>
+        <div style="margin-top:10px">
+          ${Object.keys(catM).length?`<div style="font-size:11px;font-weight:700;color:var(--green-text);text-transform:uppercase">Pemasukan per kategori</div>${catRows(catM,'var(--green-text)','+')}`:''}
+          ${Object.keys(catK).length?`<div style="font-size:11px;font-weight:700;color:var(--red);text-transform:uppercase;margin-top:8px">Pengeluaran per kategori</div>${catRows(catK,'var(--red)','−')}`:''}
+          <div style="font-size:11px;font-weight:700;color:var(--t3);text-transform:uppercase;margin-top:10px;margin-bottom:2px">Rincian Transaksi (tanggal)</div>
+          ${trxList||'<div class="empty" style="padding:8px">Tidak ada transaksi periode ini</div>'}
+        </div>
+      </details>`;
     }).join('');
 
     el('laporan-body').innerHTML=`
@@ -983,15 +1050,10 @@
         <div class="sub">${trx.length} transaksi periode ini</div>
       </div>
       <div class="card card-b mb16"><div style="position:relative;height:230px"><canvas id="chart-arus"></canvas></div></div>
-      <div class="sec-title">🔁 Prive &amp; Setor Modal</div>
-      <div class="card card-b mb16">
-        ${usahaK.length? `<div class="info-box ib-blue" style="margin-bottom:8px">Prive = uang usaha kepakai pribadi. Modal = uang pribadi disetor ke usaha.</div>${priveRows}
-        <div style="display:flex;justify-content:space-between;margin-top:10px;font-weight:800">
-          <span>Total</span><span><span style="color:var(--red)">Prive −${rp(priveTot)}</span> · <span style="color:var(--green-text)">Modal +${rp(modalTot)}</span></span></div>`
-        : '<div class="empty">Belum ada kantong usaha</div>'}
-      </div>
-      <div class="sec-title">Rincian per Kantong</div>
-      <div class="card card-b">${kRows}</div>`;
+      <div class="sec-title">💵 Lokasi Uang (Tunai &amp; Rekening)</div>
+      ${akunCards}
+      <div class="sec-title">📂 Rekap per Kantong (klik untuk detail)</div>
+      ${kantongCards}`;
 
     renderChartArus(dari,sampai);
   }
