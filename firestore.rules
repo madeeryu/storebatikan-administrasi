@@ -11,5 +11,7 @@ service cloud.firestore {
     match /kas/{doc}        { allow read, write: if isLoggedIn(); }
     match /kategori/{doc}        { allow read, write: if isLoggedIn(); }
     match /snapshot_neraca/{doc} { allow read, write: if isLoggedIn(); }
+    match /hutang/{doc}          { allow read, write: if isLoggedIn(); }
+    match /hutang_foto/{doc}     { allow read, write: if isLoggedIn(); }
   }
 }
