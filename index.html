@@ -220,8 +220,13 @@
     <!-- HUTANG -->
     <div class="page" id="page-hutang">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
-        <div><div class="page-title">Nota Hutang</div><div class="page-sub">Pantau hutang & jatuh tempo (ingatkan H-7)</div></div>
+        <div><div class="page-title">Nota Hutang</div><div class="page-sub">Per toko, bisa banyak nota · ingatkan H-7</div></div>
         <button class="btn btn-primary btn-sm" onclick="openHutang()">+ Nota</button>
+      </div>
+      <div style="position:relative;margin:4px 0 12px">
+        <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:14px;color:var(--t3)">🔍</span>
+        <input class="inp" id="hutang-search" placeholder="Cari toko / nota / keterangan…" autocomplete="off"
+          oninput="onHutangSearch(this.value)" style="padding-left:34px"/>
       </div>
       <div id="hutang-body"><div class="loading"><div class="spin"></div></div></div>
     </div>
@@ -381,7 +386,12 @@
     <div class="modal-h"><div class="t" id="mh-title">Tambah Nota Hutang</div><button class="modal-x" onclick="closeModal('m-hutang')">✕</button></div>
     <div class="modal-c">
       <input type="hidden" id="mh-id"/>
-      <div class="fg"><label>Nama / Ke Siapa</label><input class="inp" id="mh-nama" placeholder="cth: Hutang ke Agen Gas"/></div>
+      <div class="fg"><label>Toko / Ke Siapa</label>
+        <input class="inp" id="mh-nama" list="mh-toko-list" placeholder="cth: Agen Gas Pak Budi" autocomplete="off"/>
+        <datalist id="mh-toko-list"></datalist>
+        <div style="font-size:11px;color:var(--t3);margin-top:4px">Ketik nama yang sama untuk menambah nota ke toko yang sudah ada.</div>
+      </div>
+      <div class="fg"><label>No. Nota / Label (opsional)</label><input class="inp" id="mh-label" placeholder="cth: Nota #2 / kiriman 20 Jun"/></div>
       <div class="fg"><label>Nominal Hutang (Rp)</label><input class="inp num-big" id="mh-nominal" type="number" min="0" placeholder="0" oninput="mhPrev()"/><div id="mh-nominal-prev" style="text-align:center;font-size:12px;color:var(--t3)"></div></div>
       <div class="row" style="gap:8px">
         <div style="flex:1"><label style="font-size:12px">Tanggal Nota</label><input class="inp" id="mh-awal" type="date"/></div>
@@ -1253,24 +1263,38 @@
     if(d<=7) return `<span class="chip" style="background:var(--amber-bg);color:var(--amber)">H-${d}</span>`;
     return `<span class="chip" style="background:var(--bg);color:var(--t2)">${d} hari lagi</span>`;
   }
+  let _hutangSearch='';
+  window.onHutangSearch = function(v){ _hutangSearch=(v||'').trim().toLowerCase(); renderHutang(); };
   window.renderHutang = function(){
     const body=el('hutang-body'); if(!body) return;
-    const belum=hutangList.filter(h=>h.status!=='lunas').sort((a,b)=>hariKe(a.jatuh_tempo)-hariKe(b.jatuh_tempo));
-    const lunas=hutangList.filter(h=>h.status==='lunas').sort((a,b)=>(b.jatuh_tempo||'').localeCompare(a.jatuh_tempo||''));
-    const totalBelum=belum.reduce((a,h)=>a+(h.nominal||0),0);
+
+    // Filter pencarian: toko, label nota, keterangan, nominal
+    const q=_hutangSearch;
+    const list = q ? hutangList.filter(h=>
+        (h.nama||'').toLowerCase().includes(q) ||
+        (h.nota_label||'').toLowerCase().includes(q) ||
+        (h.keterangan||'').toLowerCase().includes(q) ||
+        String(h.nominal||'').includes(q.replace(/[^0-9]/g,'')||' '))
+      : hutangList;
+
+    const belumAll=hutangList.filter(h=>h.status!=='lunas');
+    const totalBelum=belumAll.reduce((a,h)=>a+(h.nominal||0),0);
     const notifOff = ('Notification' in window) && Notification.permission!=='granted';
+
+    // Kartu satu nota
     const card=h=>{
       const k=kantongList.find(x=>x.id===h.kantong_id);
       const awal=h.tanggal_awal?new Date(h.tanggal_awal+'T00:00:00').toLocaleDateString('id-ID',{day:'2-digit',month:'short',year:'numeric'}):'-';
       const tempo=h.jatuh_tempo?new Date(h.jatuh_tempo+'T00:00:00').toLocaleDateString('id-ID',{day:'2-digit',month:'short',year:'numeric'}):'-';
-      return `<div class="card card-b mb12">
+      const lunasStyle=h.status==='lunas'?'opacity:.65':'';
+      return `<div style="border:1px solid var(--border);border-radius:12px;padding:12px;margin-top:10px;${lunasStyle}">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
-          <div style="min-width:0"><div style="font-weight:800;font-size:15px">${h.nama||'-'}</div>
-            <div style="font-size:11px;color:var(--t3);margin-top:2px">${k?(k.icon+' '+k.nama+' · '):''}Nota ${awal}</div></div>
+          <div style="min-width:0"><div style="font-weight:700;font-size:14px">🧾 ${h.nota_label||('Nota '+awal)}</div>
+            <div style="font-size:11px;color:var(--t3);margin-top:2px">${k?(k.icon+' '+k.nama+' · '):''}dibuat ${awal}</div></div>
           <div style="font-weight:800;white-space:nowrap">${rp(h.nominal)}</div>
         </div>
         <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;flex-wrap:wrap;gap:6px">
-          <span style="font-size:12px;color:var(--t2)">📅 Jatuh tempo: <strong>${tempo}</strong></span>
+          <span style="font-size:12px;color:var(--t2)">📅 Tempo: <strong>${tempo}</strong></span>
           ${badgeTempo(h)}
         </div>
         ${h.keterangan?`<div style="font-size:12px;color:var(--t3);margin-top:6px">${h.keterangan}</div>`:''}
@@ -1283,33 +1307,73 @@
         </div>
       </div>`;
     };
+
+    // Kelompokkan per toko (nama)
+    const byToko={};
+    list.forEach(h=>{ const key=(h.nama||'-').trim(); (byToko[key]=byToko[key]||[]).push(h); });
+    const tokoArr=Object.entries(byToko).map(([toko,notas])=>{
+      const belum=notas.filter(h=>h.status!=='lunas');
+      const nearest=belum.length?Math.min(...belum.map(h=>hariKe(h.jatuh_tempo))):999;
+      return { toko, notas, belum, nearest,
+        totalBelum: belum.reduce((a,h)=>a+(h.nominal||0),0) };
+    }).sort((a,b)=>a.nearest-b.nearest || b.totalBelum-a.totalBelum);
+
+    const tokoCards=tokoArr.map(g=>{
+      const notasSorted=[...g.notas].sort((a,b)=>{
+        if((a.status==='lunas')!==(b.status==='lunas')) return a.status==='lunas'?1:-1;
+        return hariKe(a.jatuh_tempo)-hariKe(b.jatuh_tempo);
+      });
+      const nearestBadge = g.belum.length
+        ? badgeTempo(g.belum.slice().sort((a,b)=>hariKe(a.jatuh_tempo)-hariKe(b.jatuh_tempo))[0])
+        : '<span class="chip" style="background:var(--green-light);color:var(--green-text)">✅ Semua lunas</span>';
+      const tokoSafe=g.toko.replace(/'/g,"\\'").replace(/"/g,'&quot;');
+      return `<details class="card card-b mb12" ${q||g.nearest<=7?'open':''}>
+        <summary style="cursor:pointer">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+            <div style="min-width:0"><div style="font-weight:800;font-size:15px">🏪 ${g.toko}</div>
+              <div style="font-size:11.5px;color:var(--t3);margin-top:2px">${g.notas.length} nota · ${g.belum.length} belum lunas</div></div>
+            <div style="text-align:right">
+              <div style="font-weight:800;color:${g.totalBelum>0?'var(--red)':'var(--green-text)'}">${rp(g.totalBelum)}</div>
+              <div style="margin-top:3px">${nearestBadge}</div>
+            </div>
+          </div>
+        </summary>
+        ${notasSorted.map(card).join('')}
+        <button class="btn btn-sec btn-sm btn-block" style="margin-top:10px" onclick="openHutang(null,'${tokoSafe}')">+ Tambah nota ke toko ini</button>
+      </details>`;
+    }).join('');
+
     body.innerHTML=`
       ${notifOff?`<div class="info-box ib-amber mb12" style="display:flex;justify-content:space-between;align-items:center;gap:8px">Aktifkan notifikasi agar diingatkan H-7. <button class="btn btn-primary btn-sm" onclick="mintaIzinNotif()">🔔 Aktifkan</button></div>`:''}
       <div class="kcard mb16" style="text-align:center">
         <div class="nm" style="justify-content:center">🧾 Total Hutang Belum Lunas</div>
         <div class="amt text-red" style="font-size:24px">${rp(totalBelum)}</div>
-        <div class="sub">${belum.length} nota aktif</div>
+        <div class="sub">${belumAll.length} nota aktif · ${tokoArr.length} toko${q?` · hasil cari "${q}"`:''}</div>
       </div>
-      <div class="sec-title">Belum Lunas</div>
-      ${belum.map(card).join('')||'<div class="empty">Tidak ada hutang aktif 🎉</div>'}
-      ${lunas.length?`<div class="sec-title">Sudah Lunas</div>${lunas.map(card).join('')}`:''}`;
+      ${tokoCards || (q?`<div class="empty">Tidak ada nota yang cocok dengan "<strong>${q}</strong>"</div>`:'<div class="empty">Belum ada nota hutang. Tap <strong>+ Nota</strong> untuk mulai.</div>')}`;
   };
 
   window.mhPrev = function(){ const n=parseFloat(el('mh-nominal').value)||0; el('mh-nominal-prev').textContent=n>0?rp(n):''; };
-  window.openHutang = function(id){
+  window.openHutang = function(id, prefillToko){
     _fotoHutangBaru=null;
     el('mh-foto-input').value=''; el('mh-foto-prev').innerHTML='';
+    // Isi datalist saran toko dari nota yang sudah ada
+    const tokoSet=[...new Set(hutangList.map(h=>(h.nama||'').trim()).filter(Boolean))].sort();
+    el('mh-toko-list').innerHTML=tokoSet.map(t=>`<option value="${t.replace(/"/g,'&quot;')}"></option>`).join('');
     if(id){
       const h=hutangList.find(x=>x.id===id); if(!h) return;
       el('mh-title').textContent='Edit Nota Hutang'; el('mh-id').value=id;
-      el('mh-nama').value=h.nama||''; el('mh-nominal').value=h.nominal||''; mhPrev();
+      el('mh-nama').value=h.nama||''; el('mh-label').value=h.nota_label||'';
+      el('mh-nominal').value=h.nominal||''; mhPrev();
       el('mh-awal').value=h.tanggal_awal||''; el('mh-tempo').value=h.jatuh_tempo||'';
       el('mh-kantong').value=h.kantong_id||''; el('mh-ket').value=h.keterangan||'';
       el('mh-hapus').classList.remove('hidden');
       if(h.has_foto) el('mh-foto-prev').innerHTML=`<button class="btn btn-sec btn-sm" onclick="lihatFotoHutang('${id}')">📷 Lihat foto tersimpan</button> <span style="font-size:11px;color:var(--t3)">pilih file baru untuk ganti</span>`;
     }else{
-      el('mh-title').textContent='Tambah Nota Hutang'; el('mh-id').value='';
-      el('mh-nama').value=''; el('mh-nominal').value=''; el('mh-nominal-prev').textContent='';
+      el('mh-title').textContent=prefillToko?('Tambah Nota — '+prefillToko):'Tambah Nota Hutang';
+      el('mh-id').value='';
+      el('mh-nama').value=prefillToko||''; el('mh-label').value='';
+      el('mh-nominal').value=''; el('mh-nominal-prev').textContent='';
       el('mh-awal').value=todayStr(); el('mh-tempo').value='';
       el('mh-kantong').value=''; el('mh-ket').value='';
       el('mh-hapus').classList.add('hidden');
@@ -1344,7 +1408,8 @@
     const btn=el('mh-simpan'); btn.disabled=true; btn.textContent='Menyimpan…';
     try{
       const existing = id? hutangList.find(x=>x.id===id) : null;
-      const payload={ nama, nominal, tanggal_awal:el('mh-awal').value||todayStr(), jatuh_tempo:tempo,
+      const payload={ nama, nota_label:el('mh-label').value.trim(),
+        nominal, tanggal_awal:el('mh-awal').value||todayStr(), jatuh_tempo:tempo,
         kantong_id:el('mh-kantong').value||null, keterangan:el('mh-ket').value.trim(),
         status: existing? existing.status : 'belum_lunas',
         has_foto: _fotoHutangBaru? true : (existing? !!existing.has_foto : false),
@@ -1387,7 +1452,7 @@
   function upcomingHutang(){ return hutangList.filter(h=>h.status!=='lunas').map(h=>({...h,dd:hariKe(h.jatuh_tempo)})).filter(h=>h.dd<=7).sort((a,b)=>a.dd-b.dd); }
   function bannerHutang(){
     const up=upcomingHutang(); if(!up.length) return '';
-    const items=up.slice(0,3).map(h=>`<div style="font-size:12.5px">• <strong>${h.nama}</strong> ${rp(h.nominal)} — ${h.dd<0?`telat ${-h.dd} hari`:h.dd===0?'HARI INI':`H-${h.dd}`}</div>`).join('');
+    const items=up.slice(0,3).map(h=>`<div style="font-size:12.5px">• <strong>${h.nama}</strong>${h.nota_label?(' ('+h.nota_label+')'):''} ${rp(h.nominal)} — ${h.dd<0?`telat ${-h.dd} hari`:h.dd===0?'HARI INI':`H-${h.dd}`}</div>`).join('');
     return `<div class="info-box ib-amber mb16" style="cursor:pointer" onclick="navTo('hutang')">
       <div style="font-weight:800;margin-bottom:4px">🔔 ${up.length} hutang mendekati/lewat jatuh tempo</div>${items}
       <div style="font-size:11px;margin-top:4px;text-decoration:underline">Lihat semua →</div></div>`;
@@ -1417,7 +1482,7 @@
         if(localStorage.getItem(key)) return;
         localStorage.setItem(key,'1');
         const msg=h.dd<0?`TELAT ${-h.dd} hari`:h.dd===0?'Jatuh tempo HARI INI':`Jatuh tempo ${h.dd} hari lagi`;
-        showNotif(`🧾 ${h.nama}`, `${rp(h.nominal)} · ${msg}`);
+        showNotif(`🧾 ${h.nama}${h.nota_label?(' · '+h.nota_label):''}`, `${rp(h.nominal)} · ${msg}`);
       });
     }
   }
